@@ -15,7 +15,7 @@ export const sendOTPEmail = async (email, name, otp) => {
         <h1>${otp}</h1>
         <p>This OTP expires in 10 minutes.</p>
       `,
-      sender: { name: 'Lapra-Tech', email: 'no-reply@lapratech.com' },
+      sender: { name: 'Lapra-Tech', email: 'contact.lapratech@gmail.com' },
       to: [{ email }],
     });
 
@@ -25,3 +25,4 @@ export const sendOTPEmail = async (email, name, otp) => {
     throw new Error('Failed to send OTP email');
   }
 };
+
