@@ -162,73 +162,77 @@ router.post('/register', registerValidation, async (req, res) => {
  * @access  Public
  */
 router.post('/verify-otp', async (req, res) => {
-    try {
-        const { userId, otp } = req.body;
+  try {
+    const { userId, otp } = req.body;
 
-        if (!userId || !otp) {
-            return res.status(400).json({
-                success: false,
-                message: 'User ID and OTP are required'
-            });
-        }
-
-        // Find user
-        const user = await User.findById(userId);
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-
-        // Check if already verified
-        if (user.isVerified) {
-            return res.status(400).json({
-                success: false,
-                message: 'User is already verified'
-            });
-        }
-
-        // Verify OTP
-        if (!user.verifyOTP(otp)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid or expired OTP'
-            });
-        }
-
-        // Check 50-user limit
-        const verifiedCount = await User.countDocuments({ isVerified: true });
-        const maxUsers = parseInt(process.env.MAX_USERS || '50');
-
-        if (verifiedCount >= maxUsers) {
-            return res.status(403).json({
-                success: false,
-                message: 'Sorry you are late. All the free access slots have been filled.',
-                limitReached: true
-            });
-        }
-
-        // Mark user as verified and set registration order
-        user.isVerified = true;
-        user.registrationOrder = verifiedCount + 1;
-        user.otp = null;
-        user.otpExpiry = null;
-        await user.save();
-
-        res.json({
-            success: true,
-            message: 'You claimed the free access. You can close this window now.',
-            registrationOrder: user.registrationOrder
-        });
-
-    } catch (error) {
-        console.error('OTP verification error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Server error during verification'
-        });
+    if (!userId || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID and OTP are required'
+      });
     }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    if (user.isVerified) {
+      return res.status(400).json({
+        success: false,
+        message: 'User is already verified'
+      });
+    }
+
+    // ✅ Step 1: Verify OTP
+    if (!user.verifyOTP(otp)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired OTP'
+      });
+    }
+
+    // ✅ Step 2: Temporarily verify user
+    user.isVerified = true;
+    user.otp = null;
+    user.otpExpiry = null;
+    await user.save();
+
+    // ✅ Step 3: Count verified users
+    const maxUsers = parseInt(process.env.MAX_USERS || '50');
+    const verifiedCount = await User.countDocuments({ isVerified: true });
+
+    // ❌ Step 4: If limit exceeded, DELETE THIS USER (LAST ONE)
+    if (verifiedCount > maxUsers) {
+      await User.deleteOne({ _id: user._id });
+
+      return res.status(403).json({
+        success: false,
+        message: 'Sorry you are late. All the free access slots have been filled.',
+        limitReached: true
+      });
+    }
+
+    // ✅ Step 5: Assign registration order (safe)
+    user.registrationOrder = verifiedCount;
+    await user.save();
+
+    return res.json({
+      success: true,
+      message: 'You claimed the free access. You can close this window now.',
+      registrationOrder: user.registrationOrder
+    });
+
+  } catch (error) {
+    console.error('OTP verification error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error during verification'
+    });
+  }
 });
 
 /**
@@ -292,4 +296,5 @@ router.post('/resend-otp', async (req, res) => {
 });
 
 export default router;
+
 
