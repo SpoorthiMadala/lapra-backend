@@ -58,36 +58,51 @@ router.post('/register', registerValidation, async (req, res) => {
         const { name, email, mobile, password } = req.body;
 
         // Check if email already exists
-        const existingUser = await User.findOne({ email });
+        const existingUser = await User.findOne({  $or: [{ email }, { mobile }] });
         if (existingUser) {
-            if (existingUser.isVerified) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'This email is already registered and verified'
-                });
-            }
-
-            // User exists but not verified - resend OTP
-            const otp = existingUser.generateOTP();
-            await existingUser.save();
-
-            // Try to send email, but don't fail if it doesn't work
-            try {
-                await sendOTPEmail(email, name, otp);
-                console.log(`OTP sent to ${email}: ${otp}`);
-            } catch (emailError) {
-                console.error('Email sending failed:', emailError.message);
-                console.log(`OTP for ${email}: ${otp} (Email not sent - check console)`);
-            }
-
-            return res.json({
-                success: true,
-                message: 'OTP sent to your email (check console if email fails)',
-                userId: existingUser._id,
-                // TEMPORARY: Include OTP in response for testing (REMOVE IN PRODUCTION!)
-                otp: process.env.NODE_ENV === 'development' ? otp : undefined
+    // If verified user already exists
+    if (existingUser.isVerified) {
+        if (existingUser.email === email) {
+            return res.status(400).json({
+                success: false,
+                message: 'This email is already registered and verified'
             });
         }
+
+        if (existingUser.mobile === mobile) {
+            return res.status(400).json({
+                success: false,
+                message: 'This mobile number is already registered and verified'
+            });
+        }
+    }
+
+    // Not verified → resend OTP (only if email matches)
+    if (existingUser.email === email) {
+        const otp = existingUser.generateOTP();
+        await existingUser.save();
+
+        try {
+            await sendOTPEmail(email, name, otp);
+        } catch (err) {
+            console.error('Email sending failed:', err.message);
+        }
+
+        return res.json({
+            success: true,
+            message: 'OTP resent to your email',
+            userId: existingUser._id,
+            otp: process.env.NODE_ENV === 'development' ? otp : undefined
+        });
+    }
+
+    // Mobile exists but email is new
+    return res.status(400).json({
+        success: false,
+        message: 'This mobile number is already registered'
+    });
+}
+
 
         // Create new user
         const user = new User({
@@ -122,11 +137,16 @@ router.post('/register', registerValidation, async (req, res) => {
         console.error('Registration error:', error);
 
         if (error.code === 11000) {
-            return res.status(400).json({
-                success: false,
-                message: 'Email already registered'
-            });
-        }
+    const field = Object.keys(error.keyValue)[0];
+
+    return res.status(400).json({
+        success: false,
+        message:
+            field === 'email'
+                ? 'This email is already registered'
+                : 'This mobile number is already registered'
+    });
+}
 
         res.status(500).json({
             success: false,
@@ -272,3 +292,4 @@ router.post('/resend-otp', async (req, res) => {
 });
 
 export default router;
+
