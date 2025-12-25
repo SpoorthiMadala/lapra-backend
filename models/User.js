@@ -19,6 +19,7 @@ const userSchema = new mongoose.Schema({
   mobile: {
     type: String,
     required: [true, 'Mobile number is required'],
+    unique: true,
     trim: true,
     match: [/^[0-9]{10}$/, 'Please provide a valid 10-digit mobile number']
   },
@@ -83,3 +84,4 @@ userSchema.methods.verifyOTP = function(candidateOTP) {
 const User = mongoose.model('User', userSchema);
 
 export default User;
+
